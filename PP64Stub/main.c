@@ -187,13 +187,53 @@ unsigned char* get_file(char* filename, size_t* ret_size) {
 	return pe_mem;
 }
 
-int main() {
-	size_t			_OutputUnpackedSize = 0;
-	unsigned char*	_OutputUnpackedData = get_file("C:\\Users\\seb\\source\\repos\\helloworld\\x64\\Release\\helloworld.exe", &_OutputUnpackedSize);
-	//unsigned char* _OutputUnpackedData = get_file("C:\\Users\\seb\\source\\repos\\HelloWorldSSharp\\HelloWorldSSharp\\bin\\Release\\net8.0\\publish\\HelloWorldSSharp.exe", &_OutputUnpackedSize);
-	printf("--------------->%d\n", _OutputUnpackedSize);
+unsigned char mixme(unsigned char car) {
+	return car+1;
+}
+unsigned char unmixme(unsigned char car) {
+	return car - 1;
+}
+void boxing(unsigned char *buf,size_t size) {
+	for (size_t i = 0; i < size; ++i) {
+		buf[i] = mixme(buf[i]);
+	}
+}
+void unboxing(unsigned char* buf, size_t size) {
+	for (size_t i = 0; i < size; ++i) {
+		buf[i] = unmixme(buf[i]);
+	}
+}
+
+/*void create_box() {
+	size_t			size = 0;
+	unsigned char* boxed = get_file("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\cats.exe", &size);
+	boxing(boxed, size);
+
+	
+	FILE* f = fopen("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\output.txt", "wb");
+	fwrite(boxed, 1, size, f);
+	fclose(f);
+}*/
+int main(int argc, char *argv[]) {
+
+	//create_box();
+
+	FILE* f = NULL;
+	if (argc == 1) {
+		f=fopen("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\output.txt", "rb");
+	}
+	else {
+		f=fopen(argv[1], "rb");
+	}
+	fseek(f, 0, SEEK_END);
+	size_t size = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	unsigned char* unboxed = calloc(size, 1);
+	fread(unboxed, 1, size, f);
+	unboxing(unboxed, size);
+	
 
 
-	UnpackAndRunEp(_OutputUnpackedData, _OutputUnpackedSize, TRUE);
+	UnpackAndRunEp(unboxed, size, TRUE);
 	return 0;
 }
