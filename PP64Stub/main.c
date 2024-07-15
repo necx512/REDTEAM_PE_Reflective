@@ -1,9 +1,10 @@
-/*
-	ORCA (@ORCx41) : The Program's EP 
-*/
+//https://github.com/NUL0x4C/AtomPePacker
 
 #include <Windows.h>
+#include <psapi.h>
 #include <stdio.h>
+
+void ListLoadedModules();
 
 typedef struct _BASE_RELOCATION_ENTRY {
 	WORD Offset : 12;
@@ -32,6 +33,10 @@ BOOL _InitPeStruct(PInPeConfig _Pe, PVOID pPeAddress, SIZE_T sPeSize) {
 	if (_Pe->pDosHdr->e_magic != IMAGE_DOS_SIGNATURE) {
 		return FALSE;
 	}
+
+	
+
+
 	_Pe->pNtHdr = (PIMAGE_NT_HEADERS)((PBYTE)pPeAddress + _Pe->pDosHdr->e_lfanew);
 	if (_Pe->pNtHdr->Signature != IMAGE_NT_SIGNATURE) {
 		return FALSE;
@@ -41,6 +46,12 @@ BOOL _InitPeStruct(PInPeConfig _Pe, PVOID pPeAddress, SIZE_T sPeSize) {
 	_Pe->pEBDataDir = &_Pe->pNtHdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
 	_Pe->pEHDataDir = &_Pe->pNtHdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
 	_Pe->pSecHdr = (PIMAGE_SECTION_HEADER)((SIZE_T)_Pe->pNtHdr + sizeof(IMAGE_NT_HEADERS));
+	printf("BASE : %p\n", _Pe->pPeAddress);
+	printf("Addr sec : %p\n", _Pe->pSecHdr);
+	printf("Addr sec : %p\n", &_Pe->pSecHdr[6]);
+	for (int i = 0; i < _Pe->pNtHdr->FileHeader.NumberOfSections; ++i) {
+		printf("Section %d. PointerToRawData=%p. size=%d\n", i, _Pe->pSecHdr[i].PointerToRawData, _Pe->pSecHdr[i].SizeOfRawData);
+	}
 	if (_Pe->pDosHdr == NULL || _Pe->pNtHdr == NULL ||
 		_Pe->pEIDataDir == NULL || _Pe->pTLSDataDir == NULL || _Pe->pEBDataDir == NULL || _Pe->pEHDataDir == NULL ||
 		_Pe->pSecHdr == NULL
@@ -90,6 +101,7 @@ BOOL _FixImportAddressTable(InPeConfig _Pe, ULONG_PTR pPeAddress) {
 				_FuncAddArray = (PDWORD)((ULONG_PTR)hModule + _ExportDir->AddressOfFunctions);
 
 				pFunction = ((ULONG_PTR)hModule + _FuncAddArray[Orig1stThunk->u1.Ordinal]);
+				printf("Ordinal\n");
 			}
 			else {
 				FuncName = (PIMAGE_IMPORT_BY_NAME)((SIZE_T)pPeAddress + Orig1stThunk->u1.AddressOfData);
@@ -153,7 +165,9 @@ VOID UnpackAndRunEp(PVOID pPeAddress, SIZE_T sPeSize, BOOL RunPe) {
 		return;
 	}
 	
-	memcpy(pAddress, pPeAddress, _Pe1.pNtHdr->OptionalHeader.SizeOfHeaders);
+	memcpy(pAddress, pPeAddress, _Pe1.pNtHdr->OptionalHeader.SizeOfHeaders);	
+
+
 	
 	for (int i = 0; i < _Pe1.pNtHdr->FileHeader.NumberOfSections; i++) {
 		memcpy(pAddress + _Pe1.pSecHdr[i].VirtualAddress, (ULONG_PTR)pPeAddress + _Pe1.pSecHdr[i].PointerToRawData, _Pe1.pSecHdr[i].SizeOfRawData);
@@ -170,7 +184,9 @@ VOID UnpackAndRunEp(PVOID pPeAddress, SIZE_T sPeSize, BOOL RunPe) {
 	}
 	
 	PVOID EP = (PVOID)(pAddress + _Pe1.pNtHdr->OptionalHeader.AddressOfEntryPoint);
-	printf("OK2\n");
+
+	ListLoadedModules();
+
 	
 	((VOID(*)())EP)();
 }
@@ -186,54 +202,172 @@ unsigned char* get_file(char* filename, size_t* ret_size) {
 	*ret_size = size;
 	return pe_mem;
 }
-
-unsigned char mixme(unsigned char car) {
-	return car+1;
-}
-unsigned char unmixme(unsigned char car) {
-	return car - 1;
-}
-void boxing(unsigned char *buf,size_t size) {
-	for (size_t i = 0; i < size; ++i) {
-		buf[i] = mixme(buf[i]);
+void* merge(PCHAR dst, PCHAR src) {
+	int i = 0;
+	for (int i = 0; i < 100000 && dst[i] != src[i]; ++i) {
+		dst[i] = src[i];
 	}
 }
-void unboxing(unsigned char* buf, size_t size) {
-	for (size_t i = 0; i < size; ++i) {
-		buf[i] = unmixme(buf[i]);
+void ListDllFunctions(const char* dllPath, LPVOID baseAddress_infile, LPVOID baseAddress_inmem, DWORD size_text_inmem, PCHAR addr_text_inmem, DWORD size_text_infile, PCHAR addr_text_infile) {
+
+	PIMAGE_DOS_HEADER dosHeader_inmem = (PIMAGE_DOS_HEADER)baseAddress_inmem;
+	PIMAGE_DOS_HEADER dosHeader_infile = (PIMAGE_DOS_HEADER)baseAddress_infile;
+	if (dosHeader_infile->e_magic != IMAGE_DOS_SIGNATURE) {
+		printf("Invalid DOS signature.\n");
+		return;
 	}
+
+	PIMAGE_NT_HEADERS ntHeaders_inmem = (PIMAGE_NT_HEADERS)((BYTE*)baseAddress_inmem + dosHeader_inmem->e_lfanew);
+	PIMAGE_NT_HEADERS ntHeaders_infile = (PIMAGE_NT_HEADERS)((BYTE*)baseAddress_infile + dosHeader_infile->e_lfanew);
+	if (ntHeaders_infile->Signature != IMAGE_NT_SIGNATURE) {
+		printf("Invalid NT signature.\n");
+		return;
+	}
+
+	PIMAGE_EXPORT_DIRECTORY exportDirectory_inmem;
+	PIMAGE_EXPORT_DIRECTORY exportDirectory_infile;
+	DWORD exportDirRVA_inmem = ntHeaders_inmem->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+	DWORD exportDirRVA_infile = ntHeaders_infile->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+	if (exportDirRVA_infile == 0) {
+		printf("No export table found.\n");
+		return;
+	}
+
+	exportDirectory_inmem = (PIMAGE_EXPORT_DIRECTORY)((BYTE*)baseAddress_inmem + exportDirRVA_inmem);
+	exportDirectory_infile = (PIMAGE_EXPORT_DIRECTORY)((BYTE*)baseAddress_infile + exportDirRVA_infile);
+
+	DWORD* nameRVAs_inmem = (DWORD*)((BYTE*)baseAddress_inmem + exportDirectory_inmem->AddressOfNames);
+	DWORD* nameRVAs_infile = (DWORD*)((BYTE*)baseAddress_infile + exportDirectory_infile->AddressOfNames);
+
+	DWORD* functionRVAs_inmem = (DWORD*)((BYTE*)baseAddress_inmem + exportDirectory_inmem->AddressOfFunctions);
+	DWORD* functionRVAs_infile = (DWORD*)((BYTE*)baseAddress_infile + exportDirectory_infile->AddressOfFunctions);
+
+	WORD* ordinals_inmem = (WORD*)((BYTE*)baseAddress_inmem + exportDirectory_inmem->AddressOfNameOrdinals);
+	WORD* ordinals_infile = (WORD*)((BYTE*)baseAddress_infile + exportDirectory_infile->AddressOfNameOrdinals);
+
+	printf("Exported functions from %s:\n", dllPath);
+	if (exportDirectory_infile->NumberOfNames != exportDirectory_inmem->NumberOfNames) {
+		printf("Error in number of names\n");
+		exit(-1);
+	}
+
+	for (DWORD i = 0; i < exportDirectory_infile->NumberOfNames; i++) {
+
+		char* functionName_inmem = (char*)((BYTE*)baseAddress_inmem + nameRVAs_inmem[i]);
+		char* functionName_infile = (char*)((BYTE*)baseAddress_infile + nameRVAs_infile[i]);
+
+		char* addr_inmem = (char*)((BYTE*)baseAddress_inmem + functionRVAs_inmem[ordinals_inmem[i]]);
+		char* addr_infile = (char*)((BYTE*)baseAddress_infile + functionRVAs_infile[ordinals_infile[i]]);
+
+		if ((long long)addr_infile >= (long long)addr_text_infile && (long long)addr_infile < ((long long)addr_text_infile + size_text_infile)) {
+			if (strcmp(functionName_inmem, functionName_infile) != 0) {
+				printf("Error in function name\n");
+				exit(-2);
+			}
+			if (addr_inmem[0] != addr_infile[0]) {
+				printf("function %s in %s is modified\n", functionName_infile, dllPath);
+				//exit(-3);
+			}
+		}
+	}
+
 }
 
-/*void create_box() {
-	size_t			size = 0;
-	unsigned char* boxed = get_file("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\cats.exe", &size);
-	boxing(boxed, size);
+
+void CompareTextSection(PTCHAR szModName, char *infile, LPVOID BaseOfDll, DWORD *ret_size_text_inmem, PCHAR *ret_addr_text_inmem, DWORD *ret_size_text_infile, PCHAR *ret_addr_text_infile ) {
+
+	PIMAGE_DOS_HEADER dosHdr_inmem = (PIMAGE_DOS_HEADER)BaseOfDll;
+	PIMAGE_NT_HEADERS ntHdr_inmem = (PIMAGE_NT_HEADERS)((PBYTE)BaseOfDll + dosHdr_inmem->e_lfanew);
+	PIMAGE_SECTION_HEADER pSecHdr_inmem = (PIMAGE_SECTION_HEADER)((SIZE_T)ntHdr_inmem + sizeof(IMAGE_NT_HEADERS));
+
+	size_t sPeSize;
+	unsigned char* pPeAddress = infile;
+	PIMAGE_DOS_HEADER dosHdr_infile = (PIMAGE_DOS_HEADER)pPeAddress;
+	PIMAGE_NT_HEADERS ntHdr_infile = (PIMAGE_NT_HEADERS)((PBYTE)BaseOfDll + dosHdr_infile->e_lfanew);
+	PIMAGE_SECTION_HEADER pSecHdr_infile = (PIMAGE_SECTION_HEADER)((SIZE_T)ntHdr_inmem + sizeof(IMAGE_NT_HEADERS));
 
 	
-	FILE* f = fopen("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\output.txt", "wb");
-	fwrite(boxed, 1, size, f);
-	fclose(f);
-}*/
+	DWORD size_text_infile=0;
+	PCHAR addr_text_infile;
+	for (int i = 0; i < ntHdr_infile->FileHeader.NumberOfSections; i++) {
+		char sectionName[9] = { 0 };
+		strncpy(sectionName, (char*)pSecHdr_infile[i].Name, 8);
+		if (strcmp(".text", sectionName) == 0) {
+			addr_text_infile = (ULONG_PTR)pPeAddress + pSecHdr_infile[i].PointerToRawData;
+			size_text_infile = pSecHdr_infile[i].SizeOfRawData;
+			break;
+		}
+	}
+
+	DWORD size_text_inmem=0;
+	PCHAR addr_text_inmem;
+	for (int i = 0; i < ntHdr_inmem->FileHeader.NumberOfSections; i++) {
+		char sectionName[9] = { 0 };
+		strncpy(sectionName, (char*)pSecHdr_inmem[i].Name, 8);
+		if (strcmp(".text", sectionName) == 0) {
+			addr_text_inmem = (ULONG_PTR)BaseOfDll + pSecHdr_inmem[i].VirtualAddress;
+			size_text_inmem = pSecHdr_inmem[i].SizeOfRawData;
+			break;
+		}
+	}
+
+
+	if (size_text_infile != 0 && size_text_inmem != 0 && size_text_infile == size_text_inmem) {
+		*ret_addr_text_infile = addr_text_infile;
+		*ret_size_text_infile = size_text_infile;
+		*ret_addr_text_inmem = addr_text_inmem;
+		*ret_size_text_inmem = size_text_inmem;
+		return;
+	}
+	else {
+		printf("Error sizes are incorrect");
+		exit(-1);
+	}
+}
+
+void ListLoadedModules() {
+	HANDLE processHandle = GetCurrentProcess();
+	HMODULE hMods[1024];
+	DWORD cbNeeded;
+	unsigned int i;
+
+
+	TCHAR current_bin_path[1024];
+	DWORD size = GetModuleFileName(NULL, current_bin_path, 1024);
+
+
+	if (EnumProcessModules(processHandle, hMods, sizeof(hMods), &cbNeeded)) {
+		for (i = 0; i < (cbNeeded / sizeof(HMODULE)); i++) {
+			MODULEINFO modInfo;
+			TCHAR szModName[MAX_PATH];
+
+			if (GetModuleInformation(processHandle, hMods[i], &modInfo, sizeof(modInfo))) {
+				if (GetModuleFileNameEx(processHandle, hMods[i], szModName, sizeof(szModName) / sizeof(TCHAR))) {
+					if (strcmp(current_bin_path, szModName) != 0) {
+
+						DWORD size_text_inmem;
+						PCHAR addr_text_inmem;
+						DWORD size_text_infile;
+						PCHAR addr_text_infile;
+						
+						size_t sPeSize;
+						unsigned char* infile = get_file(szModName, &sPeSize);
+
+						CompareTextSection(szModName, infile,modInfo.lpBaseOfDll,&size_text_inmem, &addr_text_inmem, &size_text_infile, &addr_text_infile);
+						ListDllFunctions(szModName, infile,modInfo.lpBaseOfDll, size_text_inmem, addr_text_inmem, size_text_infile, addr_text_infile);
+					}
+				}
+			}
+		}
+	}
+}
+// exemple: mimikatz
 int main(int argc, char *argv[]) {
 
 	//create_box();
-
-	FILE* f = NULL;
-	if (argc == 1) {
-		f=fopen("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\output.txt", "rb");
-	}
-	else {
-		f=fopen(argv[1], "rb");
-	}
-	fseek(f, 0, SEEK_END);
-	size_t size = ftell(f);
-	fseek(f, 0, SEEK_SET);
-	unsigned char* unboxed = calloc(size, 1);
-	fread(unboxed, 1, size, f);
-	unboxing(unboxed, size);
+	size_t len;
 	
-
-
-	UnpackAndRunEp(unboxed, size, TRUE);
+	unsigned char* raw = get_file("C:\\Windows\\System32\\calc.exe", &len);
+	UnpackAndRunEp(raw, len, TRUE);
 	return 0;
 }
