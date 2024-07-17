@@ -4,7 +4,8 @@
 
 // mkdir C:\Users\Public\testme
 unsigned char* get_file(char* filename, size_t* ret_size) {
-	FILE* file = fopen(filename, "rb");
+	FILE* file = NULL;
+	fopen_s(&file, filename, "rb");
 	fseek(file, 0, SEEK_END);
 	long size = ftell(file);
 	fseek(file, 0, SEEK_SET);
@@ -21,8 +22,9 @@ int main(int argc, char* argv[])
 	size_t len;
 	unsigned char* buf = get_file(argv[1], &len);
 	encode(buf, len);
-
-	FILE* f = fopen(argv[2], "wb");
+	
+	FILE* f;
+	fopen_s(&f, argv[2], "wb");
 	fwrite(buf, 1, len, f);
 	fclose(f);
 	return 0;
