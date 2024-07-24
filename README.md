@@ -2,6 +2,7 @@
 
 Srcs:
 https://github.com/NUL0x4C/AtomPePacker combined with https://github.com/NUL0x4C/Syscallslib [forked]
+(can be usefull:  https://github.com/Unam3dd/WinLoader.git)
 
 ```
 void write_protections(char* ImageBase, PIMAGE_SECTION_HEADER sections, WORD nsections, DWORD size_of_headers)
