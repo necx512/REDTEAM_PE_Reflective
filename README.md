@@ -3,7 +3,7 @@
 Srcs:
 https://github.com/NUL0x4C/AtomPePacker combined with https://github.com/NUL0x4C/Syscallslib [forked]
 
-
+```
 void write_protections(char* ImageBase, PIMAGE_SECTION_HEADER sections, WORD nsections, DWORD size_of_headers)
 {
     DWORD i = 0, old_prot = 0, new_prot = 0;
@@ -25,3 +25,4 @@ void write_protections(char* ImageBase, PIMAGE_SECTION_HEADER sections, WORD nse
         VirtualProtect(addr, sections[i].Misc.VirtualSize, new_prot, &old_prot);
     }
 }
+```
