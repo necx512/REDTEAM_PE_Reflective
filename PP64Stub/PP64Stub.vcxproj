@@ -152,7 +152,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="custom_mimikatz.c" />
     <ClCompile Include="custom_minidump.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="unhook.c" />

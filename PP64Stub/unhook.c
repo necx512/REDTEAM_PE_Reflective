@@ -1,4 +1,5 @@
 #include "header.h"
+#if 0
 int ListDllFunctions(const unsigned char* dllPath, LPVOID baseAddress_infile, LPVOID baseAddress_inmem, DWORD size_text_inmem, PCHAR addr_text_inmem, PCHAR size_text_infile, PCHAR addr_text_infile, PIMAGE_SECTION_HEADER pSecHdr_inmem, PIMAGE_SECTION_HEADER pSecHdr_infile) {
 
 	DWORD oldProtection = 0;
@@ -442,9 +443,6 @@ int patch_amsi(LPVOID baseAddress_inmem) {
 		else {
 			printf("AmsiScanBuffer is already patched\n");
 		}
-
-
-
 	}
 	return status;
 
@@ -455,3 +453,4 @@ int main_unhook(int argc, char* argv[]) {
 	ListLoadedModules();
 	return 0;
 }
+#endif
