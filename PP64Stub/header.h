@@ -7,12 +7,28 @@
 #include <winternl.h>
 #include <psapi.h>
 
+/*
+WINDOWS LINUX
+WORD	short	2 bytes
+ULONG_PTR
+SIZE_T
+*/
+
 // main.c
 
 typedef struct _BASE_RELOCATION_ENTRY {
 	WORD Offset : 12;
 	WORD Type : 4;
 } BASE_RELOCATION_ENTRY, * PBASE_RELOCATION_ENTRY;
+
+struct pe_structs
+{
+	PIMAGE_DOS_HEADER dosHeader;
+	PIMAGE_NT_HEADERS ntHeader;
+	PIMAGE_SECTION_HEADER secHeader;
+	PIMAGE_DATA_DIRECTORY dataDirectory;
+};
+
 
 typedef struct _InPeConfig {
 	ULONG_PTR				pPeAddress;
@@ -32,8 +48,8 @@ PVOID UnpackAndRunEp(PVOID pPeAddress, SIZE_T sPeSize, BOOL RunPe);
 unsigned char* get_file(unsigned char* filename, size_t* ret_size);
 
 //unhook.h
-int ListDllFunctions(const unsigned char* dllPath, LPVOID baseAddress_infile, LPVOID baseAddress_inmem, DWORD size_text_inmem, PCHAR addr_text_inmem, PCHAR size_text_infile, PCHAR addr_text_infile, PIMAGE_SECTION_HEADER pSecHdr_inmem, PIMAGE_SECTION_HEADER pSecHdr_infile);
-void CompareTextSection(PTCHAR szModName, unsigned char* infile, LPVOID BaseOfDll, DWORD* ret_size_text_inmem, PCHAR* ret_addr_text_inmem, DWORD* ret_size_text_infile, PCHAR* ret_addr_text_infile);
+ListDllFunctions(const unsigned char* dllPath, LPVOID baseAddress_infile, LPVOID baseAddress_inmem, BOOL do_patch);
+
 void ListLoadedModules();
 int patch_etw(LPVOID baseAddress_inmem);
 int patch_amsi(LPVOID baseAddress_inmem);
@@ -47,3 +63,14 @@ BOOL setPrivilege();
 int main_mimikatz(int argc, char* argv[]);
 
 unsigned char* get_file(unsigned char* filename, size_t* ret_size);
+
+
+// PE helper
+struct pe_structs get_structs_from_baseAddr(void* baseaddr);
+PVOID convert_RVA_to_virtualAddressInMem(PVOID* baseaddr_inmem, PVOID* PVA);
+PVOID convert_RVA_to_virtualAddressInFile(PVOID* baseaddr_infile, PVOID* PVA);
+PVOID get_section_by_name_InFile(PVOID* baseaddr_infile, DWORD* size, unsigned char* name_of_wanted_section);
+PVOID get_section_by_name_InMem(PVOID* baseaddr_inmem, DWORD* size, unsigned char* name_of_wanted_section);
+BOOL is_RVA_in_text_section_InFile(PVOID* baseaddr_infile, PVOID* RVA);
+BOOL is_RVA_in_text_section_InMem(PVOID* baseaddr_inmem, PVOID* RVA);
+

@@ -178,8 +178,6 @@ PVOID UnpackAndRunEp(PVOID pPeAddress, SIZE_T sPeSize, BOOL RunPe) {
 }
 
 unsigned char* get_file(unsigned char* filename, size_t* ret_size) {
-	printf("in get_file\n");
-	printf("file : %s\n", filename);
 
 	FILE* file = fopen(filename, "rb");
 	if (file == NULL) {
@@ -188,7 +186,6 @@ unsigned char* get_file(unsigned char* filename, size_t* ret_size) {
 	fseek(file, 0, SEEK_END);
 	long size = ftell(file);
 	fseek(file, 0, SEEK_SET);
-	printf("Allocated %d bytes\n", size);
 	unsigned char* pe_mem = calloc(1, size);
 	if (pe_mem == NULL)
 	{
@@ -196,7 +193,6 @@ unsigned char* get_file(unsigned char* filename, size_t* ret_size) {
 		exit(1);
 	}
 	fread(pe_mem, size, 1, file);
-	printf("->%02X\n", pe_mem[0xec]);
 	fclose(file);
 	*ret_size = size;
 	return pe_mem;
@@ -222,8 +218,8 @@ int main(int argc, char *argv[]) {
 		//unsigned char* raw = get_file("C:\\Windows\\System32\\calc.exe", &len);
 		
 		
-		//unsigned char* raw = get_file("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt", &len);
-		unsigned char *raw = get_file("C:\\Users\\sebastien.carre\\whitelist\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt",&len);
+		unsigned char* raw = get_file("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt", &len);
+		//unsigned char *raw = get_file("C:\\Users\\sebastien.carre\\whitelist\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt",&len);
 
 		for (size_t i = 0; i < len; ++i) {
 			raw[i] = raw[i] - 1;
