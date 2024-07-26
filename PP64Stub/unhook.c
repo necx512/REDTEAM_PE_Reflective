@@ -1,5 +1,44 @@
 #include "header.h"
-#if 0
+
+void get_list_of_exported_symbols(const unsigned char* dllPath) {
+	size_t ret_size = 0;
+	unsigned char *baseAddress_infile = get_file(dllPath, &ret_size);
+
+	PIMAGE_DOS_HEADER dosHeader_infile = (PIMAGE_DOS_HEADER)baseAddress_infile;
+	if (dosHeader_infile->e_magic != IMAGE_DOS_SIGNATURE) {
+		printf("Invalid DOS signature.\n");
+		return;
+	}
+
+	PIMAGE_NT_HEADERS ntHeaders_infile = (PIMAGE_NT_HEADERS)((BYTE*)baseAddress_infile + dosHeader_infile->e_lfanew);
+	if (ntHeaders_infile->Signature != IMAGE_NT_SIGNATURE) {
+		printf("Invalid NT signature.\n");
+		return;
+	}
+
+	printf("%x\n", ntHeaders_infile->FileHeader.Machine);
+	if (ntHeaders_infile->FileHeader.Machine == 0x14c) {
+		printf("ERROR %s : This is 32bits\n", dllPath);
+		exit(2);
+	}
+	else if (ntHeaders_infile->FileHeader.Machine == 0x8664) {
+		printf("%s : This is 64bits\n", dllPath);
+	}
+	else {
+		printf("Unknown\n");
+		exit(0);
+	}
+
+	DWORD exportDirRVA_infile = ntHeaders_infile->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+	PIMAGE_EXPORT_DIRECTORY exportDirectory_infile = (PIMAGE_EXPORT_DIRECTORY)((BYTE*)baseAddress_infile + exportDirRVA_infile);
+
+	printf("Exported functions from %s:%d\n", dllPath, exportDirectory_infile->NumberOfNames);
+
+
+
+
+}
+
 int ListDllFunctions(const unsigned char* dllPath, LPVOID baseAddress_infile, LPVOID baseAddress_inmem, DWORD size_text_inmem, PCHAR addr_text_inmem, PCHAR size_text_infile, PCHAR addr_text_infile, PIMAGE_SECTION_HEADER pSecHdr_inmem, PIMAGE_SECTION_HEADER pSecHdr_infile) {
 
 	DWORD oldProtection = 0;
@@ -19,13 +58,48 @@ int ListDllFunctions(const unsigned char* dllPath, LPVOID baseAddress_infile, LP
 		printf("Invalid DOS signature.\n");
 		return;
 	}
+	if (dosHeader_inmem->e_magic != IMAGE_DOS_SIGNATURE) {
+		printf("Invalid DOS signature.\n");
+		return;
+	}
 
 	PIMAGE_NT_HEADERS ntHeaders_inmem = (PIMAGE_NT_HEADERS)((BYTE*)baseAddress_inmem + dosHeader_inmem->e_lfanew);
 	PIMAGE_NT_HEADERS ntHeaders_infile = (PIMAGE_NT_HEADERS)((BYTE*)baseAddress_infile + dosHeader_infile->e_lfanew);
+
+
+
+	
+
+
+
+	
 	if (ntHeaders_infile->Signature != IMAGE_NT_SIGNATURE) {
 		printf("Invalid NT signature.\n");
 		return;
 	}
+	if (ntHeaders_inmem->Signature != IMAGE_NT_SIGNATURE) {
+		printf("Invalid NT signature.\n");
+		return;
+	}
+
+	printf("%x\n", ntHeaders_infile->FileHeader.Machine);
+	if (ntHeaders_infile->FileHeader.Machine == 0x14c) {
+		printf("ERROR %s : This is 32bits\n", dllPath);
+		exit(2);
+	}
+	else if (ntHeaders_infile->FileHeader.Machine == 0x8664) {
+		printf("%s : This is 64bits\n", dllPath);
+	}
+	else {
+		printf("Unknown\n");
+		exit(0);
+	}
+
+	printf("base file : %p\n", baseAddress_infile);
+	printf("NT header in file : %p\n", ntHeaders_infile);
+	printf("File Header  : %p\n", &ntHeaders_infile->FileHeader);
+	printf("Optional Header  : %p\n", &ntHeaders_infile->OptionalHeader);
+	printf("IMAGE_DIRECTORY_ENTRY_EXPORT  : %p\n", &ntHeaders_infile->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]);
 
 	PIMAGE_EXPORT_DIRECTORY exportDirectory_inmem;
 	PIMAGE_EXPORT_DIRECTORY exportDirectory_infile;
@@ -35,9 +109,14 @@ int ListDllFunctions(const unsigned char* dllPath, LPVOID baseAddress_infile, LP
 		printf("No export table found.\n");
 		return;
 	}
+	if (exportDirRVA_inmem == 0) {
+		printf("No export table found.\n");
+		return;
+	}
 
 	exportDirectory_inmem = (PIMAGE_EXPORT_DIRECTORY)((BYTE*)baseAddress_inmem + exportDirRVA_inmem);
 	exportDirectory_infile = (PIMAGE_EXPORT_DIRECTORY)((BYTE*)baseAddress_infile + exportDirRVA_infile);
+	printf("ExportDirectory in file : %p\n", exportDirectory_infile);
 
 	DWORD* nameRVAs_inmem = (DWORD*)((BYTE*)baseAddress_inmem + exportDirectory_inmem->AddressOfNames);
 	DWORD* nameRVAs_infile = (DWORD*)((BYTE*)baseAddress_infile + exportDirectory_infile->AddressOfNames);
@@ -48,7 +127,11 @@ int ListDllFunctions(const unsigned char* dllPath, LPVOID baseAddress_infile, LP
 	WORD* ordinals_inmem = (WORD*)((BYTE*)baseAddress_inmem + exportDirectory_inmem->AddressOfNameOrdinals);
 	WORD* ordinals_infile = (WORD*)((BYTE*)baseAddress_infile + exportDirectory_infile->AddressOfNameOrdinals);
 
-	printf("Exported functions from %s:\n", dllPath);
+	printf("Exported functions from %s:%d\n", dllPath, exportDirectory_infile->NumberOfNames);
+	//printf("Exported functions from %s:%d\n", dllPath, exportDirectory_inmem->NumberOfNames);
+
+	
+	
 	if (exportDirectory_infile->NumberOfNames != exportDirectory_inmem->NumberOfNames) {
 		printf("Error in number of names. File has %d names while mem has %d name\n", exportDirectory_infile->NumberOfNames, exportDirectory_inmem->NumberOfNames);
 
@@ -56,7 +139,7 @@ int ListDllFunctions(const unsigned char* dllPath, LPVOID baseAddress_infile, LP
 		FILE* log_inmem = fopen("C:\\Users\\sebastien.carre\\log_inmem.txt", "w");
 
 		printf("Loggind %d entries for FILE\n", exportDirectory_infile->NumberOfNames);
-		for (DWORD i = 0; i < exportDirectory_infile->NumberOfNames; i++) {
+		for (DWORD i = 0; i < exportDirectory_infile->NumberOfNames && i<10; i++) {
 			unsigned char* functionName_infile = (unsigned char*)((BYTE*)baseAddress_infile + nameRVAs_infile[i]);
 			fprintf(log_infile, "%s\n", functionName_infile);
 		}
@@ -275,7 +358,7 @@ void ListLoadedModules() {
 							continue;
 						}
 						else {
-							printf("Analysing %s\n", szModName);
+							printf("Analysing %s.infile[0xec] = %x\n", szModName, infile[0xec]);
 						}
 						CompareTextSection(szModName, infile, modInfo.lpBaseOfDll, &size_text_inmem, &addr_text_inmem, &size_text_infile, &addr_text_infile);
 
@@ -450,7 +533,9 @@ int patch_amsi(LPVOID baseAddress_inmem) {
 }
 
 int main_unhook(int argc, char* argv[]) {
-	ListLoadedModules();
+	get_list_of_exported_symbols("C:\\WINDOWS\\SYSTEM32\\VCRUNTIME140.dll");
+	exit(0);
+	//ListLoadedModules();
+	//printf("Done\n");
 	return 0;
 }
-#endif

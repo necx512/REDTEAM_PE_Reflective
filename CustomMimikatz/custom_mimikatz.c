@@ -134,7 +134,7 @@ BOOL CALLBACK minidumpCallback(
 		RtlCopyMemory(destination, source, bufferSize);
 		printf("OK\n");
 		callbackOutput->Status = S_OK;
-		//encode(destination, bufferSize);
+		encode(destination, bufferSize);
 		break;
 	case IoFinishCallback:
 		printf("END %d\n", ++pathnbr);

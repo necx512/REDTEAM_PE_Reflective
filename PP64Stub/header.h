@@ -45,3 +45,5 @@ BOOL isElevatedProcess();
 DWORD GetProcessIDByName(const char* processName);
 BOOL setPrivilege();
 int main_mimikatz(int argc, char* argv[]);
+
+unsigned char* get_file(unsigned char* filename, size_t* ret_size);

