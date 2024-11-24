@@ -41,6 +41,114 @@ typedef struct _InPeConfig {
 	PIMAGE_DATA_DIRECTORY	pEHDataDir;		//IMAGE_DIRECTORY_ENTRY_EXCEPTION
 	PIMAGE_SECTION_HEADER	pSecHdr;
 } InPeConfig, * PInPeConfig;
+
+#define GDI_HANDLE_BUFFER_SIZE      34
+typedef struct _PEBOVERRIDE
+{
+    BOOLEAN InheritedAddressSpace;      // These four fields cannot change unless the
+    BOOLEAN ReadImageFileExecOptions;   //
+    BOOLEAN BeingDebugged;              //
+    BOOLEAN BitField;                  // reserved for bitfields with system-specific flags
+
+    HANDLE Mutant;                      // INITIAL_PEB structure is also updated.
+
+    PVOID ImageBaseAddress;
+    PPEB_LDR_DATA Ldr;
+    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
+    PVOID SubSystemData;
+    PVOID ProcessHeap;
+    PRTL_CRITICAL_SECTION FastPebLock;
+
+    PSLIST_HEADER AtlThunkSListPtr;
+    PVOID IFEOKey;
+    ULONG CrossProcessFlags;
+    union {
+        PVOID KernelCallbackTable;
+        PVOID UserSharedInfoPtr;
+    };
+
+    DWORD SystemReserved;
+    DWORD  AtlThunkSListPtr32;
+    PVOID ApiSetMap;
+
+    PVOID TlsExpansionCounter;
+    PVOID TlsBitmap;
+    DWORD  TlsBitmapBits[2];         // relates to TLS_MINIMUM_AVAILABLE
+
+    PVOID ReadOnlySharedMemoryBase;
+    PVOID SharedData;
+    PVOID* ReadOnlyStaticServerData;
+    PVOID AnsiCodePageData;
+    PVOID OemCodePageData;
+    PVOID UnicodeCaseTableData;
+
+    //
+    // Useful information for LdrpInitialize
+
+    ULONG NumberOfProcessors;
+    ULONG NtGlobalFlag;
+
+    //
+    // Passed up from MmCreatePeb from Session Manager registry key
+    //
+
+    LARGE_INTEGER CriticalSectionTimeout;
+    PVOID HeapSegmentReserve;
+    PVOID HeapSegmentCommit;
+    PVOID HeapDeCommitTotalFreeThreshold;
+    PVOID HeapDeCommitFreeBlockThreshold;
+
+    //
+    // Where heap manager keeps track of all heaps created for a process
+    // Fields initialized by MmCreatePeb.  ProcessHeaps is initialized
+    // to point to the first free byte after the PEB and MaximumNumberOfHeaps
+    // is computed from the page size used to hold the PEB, less the fixed
+    // size of this data structure.
+    //
+
+    DWORD NumberOfHeaps;
+    DWORD MaximumNumberOfHeaps;
+    PVOID* ProcessHeaps;
+
+    //
+    //
+    PVOID GdiSharedHandleTable;
+    PVOID ProcessStarterHelper;
+    PVOID GdiDCAttributeList;
+    PRTL_CRITICAL_SECTION LoaderLock;
+
+    //
+    // Following fields filled in by MmCreatePeb from system values and/or
+    // image header. These fields have changed since Windows NT 4.0,
+    // so use with caution
+    //
+
+    DWORD OSMajorVersion;
+    DWORD OSMinorVersion;
+    USHORT OSBuildNumber;
+    USHORT OSCSDVersion;
+    DWORD OSPlatformId;
+    DWORD ImageSubsystem;
+    DWORD ImageSubsystemMajorVersion;
+
+    PVOID ImageSubsystemMinorVersion;
+    PVOID ImageProcessAffinityMask;
+    PVOID GdiHandleBuffer[GDI_HANDLE_BUFFER_SIZE];
+
+    // [...] - more fields are there: this is just a fragment of the PEB structure
+} PEBOVERRIDE, * PPEBOVERRIDE;
+
+
+
+NTSYSAPI NTSTATUS NTAPI RtlEnterCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection);
+NTSYSAPI NTSTATUS NTAPI RtlLeaveCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection);
+
+
+void fix_peb(PVOID baseaddr);
+
+
+
+
 BOOL _InitPeStruct(PInPeConfig _Pe, PVOID pPeAddress, SIZE_T sPeSize);
 BOOL _FixImportAddressTable(InPeConfig _Pe, ULONG_PTR pPeAddress);
 BOOL _ReallocationSupport(ULONG_PTR ActualAddress, ULONG_PTR PreferableAddress, PIMAGE_BASE_RELOCATION BaseRelocDir);

