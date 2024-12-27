@@ -1,4 +1,3 @@
-// code mostly stolen from pabloko's comment in https://gist.github.com/xpn/e95a62c6afcf06ede52568fcd8187cc2
 #include <iostream>
 #include <metahost.h>
 #include <corerror.h>
