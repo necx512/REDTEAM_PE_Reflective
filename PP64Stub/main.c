@@ -1,4 +1,3 @@
-//https://github.com/NUL0x4C/AtomPePacker
 #include "header.h"
 #pragma comment (lib, "Dbghelp.lib")
 #pragma comment (lib, "ntdll.lib")
