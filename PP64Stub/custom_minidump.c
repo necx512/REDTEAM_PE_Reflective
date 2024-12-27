@@ -1,5 +1,4 @@
 #if 0
-//https://github.com/w1u0u1/minidump/blob/main/minidump/minidump.c
 
 #include <windows.h>
 #include <stdio.h>
